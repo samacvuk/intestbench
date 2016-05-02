@@ -1,0 +1,5 @@
+son0: stress-ng -c 8
+son1: stress-ng -m 8 --vm-bytes=1g
+son2: stress-ng -d 8 --hdd-opts sync
+son3: stress-ng -d 8
+son4: /home/ubuntu/prime95/mprime -t

@@ -1,0 +1,175 @@
+#!/bin/bash
+
+function cancel_unblock_exec
+{
+	pids=$(ps aux | grep bash | grep $1 | tr -s " "| cut -d" " -f2)
+	if [ -n "$pids"  ]; then
+		kill -9 $pids
+	fi
+}
+
+function join_unblock_exec
+{
+        while [ -n "$(ps aux | grep bash | grep $1 | tr -s " "| cut -d" " -f2)" ]
+        do
+                sleep 3
+        done
+}
+
+function remote_unblock_exec
+{
+	nohup functions/ssh.sh $host_username $1 $2 >> $workload_log &
+}
+
+function remote_exec
+{
+        local ret=$(rsh $host_username\@$1 "$2" ; echo $?)
+        local _status=$(echo $ret | awk '{ print $NF }')
+        [ $_status -eq 255 ] && echo "Connection failure." && exit 1
+        echo $(echo $ret | sed s/'\w*$'//)
+}
+
+function get_disk_throughput
+{
+        local disk_throughtput=`hdparm -Tt /dev/sda | grep "Timing buffered disk reads:" | awk '{print $11}'`
+        local disk_throughtput=${disk_throughtput%.*}
+
+        echo $((disk_throughtput * 1024 * 1024))
+}
+
+function get_variable
+{
+	echo `cat $1 | sed /^#/d | grep $2 | sed 's/^.[^ \t]*[ \t]*\(.*\)/\1/g'`
+}
+
+function load_variables_from_file
+{
+
+	echo "Loading config file..."
+
+	[ ! -f $1 ] && echo "Config file ($1) not found." && exit 1
+
+	base_host_ip=$(get_variable $1 "base_host_ip")
+	base_host_domain_name=$(get_variable $1 "base_host_domain_name")
+	base_host_workload=$(get_variable $1 "base_host_workload")
+	base_host_minimum_memory_in_bytes=$(get_variable $1 "base_host_minimum_memory_in_bytes")
+	base_host_dmon_path=$(get_variable $1 "base_host_dmon_path")
+	
+	stress_host_ip=$(get_variable $1 "stress_host_ip")
+	stress_host_domain_name=$(get_variable $1 "stress_host_domain_name")
+	stress_host_dmon_path=$(get_variable $1 "stress_host_dmon_path")
+	stress_host_prime96_path=$(get_variable $1 "stress_host_prime96_path")
+
+	host_username=$(get_variable $1 "host_username")
+	log_cmd=$(get_variable $1 "log_cmd")
+	total_memory_in_bytes=$(get_variable $1 "total_memory_in_bytes")
+	total_cores=`nproc --all`
+
+        default_base_host_mem=$(((base_host_minimum_memory_in_bytes * 100)/total_memory_in_bytes))
+        default_stress_host_mem=$((100 - default_base_host_mem))
+	maximum_disk_throughput=$(get_disk_throughput)
+
+	output_log=logs/output_$(date +%Y_%m_%d_%H_%M_%S).log
+	workload_log=logs/output_workload_$(date +%Y_%m_%d_%H_%M_%S).log
+
+	echo $base_host_ip	
+	echo $base_host_domain_name
+	echo $base_host_workload
+	echo $base_host_minimum_memory_in_bytes
+	echo $base_host_dmon_path
+	echo $stress_host_ip
+	echo $stress_host_domain_name
+	echo $stress_host_prime96_path
+	echo $host_username
+	echo $log_cmd
+	echo $total_memory_in_bytes
+	echo $total_cores
+
+	echo $default_base_host_mem
+	echo $default_stress_host_mem
+	echo $maximum_disk_throughput
+
+	echo -e "Config file successfully loaded."
+}
+
+function load_son_config_file
+{
+	[ ! -f $1 ] && echo "Son Config file ($1) not found." && exit 1
+
+	IFS=$'\n' 
+	set -f
+	index=0
+	for line in $(cat "$1")
+	do
+		son_cmd[${index}]=`echo $line | sed 's/^.*: \([^ ]*\) \(.*\)/\1/g'`
+		son_param[${index}]=`echo $line | sed 's/^.*: \([^ ]*\) \(.*\)/\2/g'`
+		let index++
+	done
+}
+
+
+function check_ssh_connection
+{
+	if [ ! -f $HOME/.ssh/id_rsa ]; then
+		echo "Creating a pair of ssh keys . . ."
+		ssh-keygen -t rsa
+	fi
+
+	status=$(ssh -o BatchMode=yes -o ConnectTimeout=5 $host_username\@$base_host_ip echo ok 2>&1)
+	if [[ $status != ok ]] ; then
+		echo "Adding public key to base_host_ip . . ."
+		ssh-copy-id $host_username\@$base_host_ip > /dev/null 2>&1
+		status2=$(ssh -o BatchMode=yes -o ConnectTimeout=5 $host_username\@$base_host_ip echo ok 2>&1)
+		[ $status2 != "ok" ] && echo "Please, check the SSH connection to base_host_ip, maybe wrong username." && exit 1
+	fi
+
+	status=$(ssh -o BatchMode=yes -o ConnectTimeout=5 $host_username\@$stress_host_ip echo ok 2>&1)
+	if [[ $status != ok ]] ; then
+		echo "Adding public key to stress_host_ip . . ."
+		ssh-copy-id $host_username\@$stress_host_ip > /dev/null 2>&1
+		status2=$(ssh -o BatchMode=yes -o ConnectTimeout=5 $host_username\@$stress_host_ip echo ok 2>&1)
+		[ $status2 != "ok" ] && echo "Please, check the SSH connection to stress_host_ip, maybe wrong username." && exit 1
+	fi
+	
+	echo "SSH Connection checked."
+}
+
+function check_ip_connection
+{
+	[ $(ping -c 3 $base_host_ip &> /dev/null; echo $?) -eq 1 ] && echo "base_host_ip unreacheable" && exit 1
+	[ $(ping -c 3 $stress_host_ip &> /dev/null; echo $?) -eq 1 ] && echo "stress_host_ip unreacheable" && exit 1
+ 
+	echo "IP connection checked."
+}
+
+function check_packages
+{
+	[ -z $(remote_exec $base_host_ip "which $base_host_workload") ] && echo "Application workload not found in $base_host_ip" && exit 1
+	[ -z $(remote_exec $base_host_ip "which $base_host_dmon_path") ] && echo "dmon not found in host $base_host_ip" && exit 1
+#	[ -z $(remote_exec $stress_host_ip "which $stress_host_prime96_path") ] && echo "Prime95 not found in host $stress_host_ip" && exit 1
+
+	echo "Package requirements checked."
+}
+
+function exec_pre
+{
+        echo -ne "${YELLOW}Execution pre-script ...\e[0m\n"
+
+	pre_script
+
+	echo -ne "${YELLOW}pre-script done.\e[0m\n"
+}
+
+function exec_post
+{
+        echo -ne "${YELLOW}Execution post-script ...\e[0m\n"
+
+	post_script
+
+	echo -ne "${YELLOW}post-scrip done.\e[0m\n"
+}
+
+function get_log_from_base_host
+{
+	 remote_exec $base_host_ip "$log_cmd"
+}

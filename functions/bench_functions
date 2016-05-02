@@ -1,0 +1,306 @@
+#!/bin/bash
+
+function bench_alone
+{
+        echo -ne "${YELLOW}Running user's workload on $base_host_domain_name ...\e[0m"
+
+	# Ensure nothing is running
+	remote_exec $stress_host_ip "pkill -15 -f $base_host_workload"
+	cancel_unblock_exec $base_host_ip
+	
+	# Run user's workload remotely
+        remote_unblock_exec $base_host_ip $base_host_workload
+	
+	# Awaiting user's workload to execute
+        join_unblock_exec $base_host_ip
+
+	# Stop resource monitoring
+        remote_exec $base_host_ip "$base_host_dmon_path stop"
+	
+        echo -ne "${YELLOW} done.\e[0m\n"
+}
+
+function bench_son
+{
+	son_cmd=$1
+	son_param=$2
+
+        echo -ne "${YELLOW}Running user's workload on $base_host_domain_name and SoN \"$son_cmd $son_param\" on $stress_host_domain_name ...\e[0m"
+
+	# Ensure nothing is running
+        remote_exec $stress_host_ip "pkill -15 -f $son_cmd"
+	cancel_unblock_exec $base_host_ip
+
+	# Run user's workload and SoN benchmark remotely
+        remote_unblock_exec $base_host_ip $base_host_workload
+        remote_exec $stress_host_ip "nohup $son_cmd $son_param > /dev/null 2>&1 &"
+
+	# Awaiting user's workload to execute
+        join_unblock_exec $base_host_ip
+
+	# killing SoN benchmark
+        remote_exec $stress_host_ip "pkill -15 -f $son_cmd"
+
+        echo -ne "${YELLOW} done.\e[0m\n"
+}
+
+function bench_exec
+{
+	local bench_name=$1
+	local bench_cmd=$2
+	local bench_param=$3
+
+	exec_pre
+
+	bench_alone
+	local wmetric_al=$(get_workload_metric)
+
+	bench_son $bench_cmd $bench_param
+	local wmetric=$(get_workload_metric)
+
+	log_bench_statistics $bench_name $percent_h1 $percent_h2 $wmetric $wmetric_al
+
+	exec_post
+}
+
+function bench_alone_exec
+{
+        exec_pre
+        restrict_cpu_cpuset
+	restrict_cpu 100 100
+        restrict_mem 100 100
+	restrict_disk 100 100
+
+        bench_alone
+	
+        local wmetric_al=$(get_workload_metric)
+
+	log "alone $wmetric_al"
+
+        exec_post
+}
+
+function son0
+{
+	load_default_values
+
+	restrict_cpu $percent_h1 $percent_h2
+	restrict_mem $default_base_host_mem $default_stress_host_mem
+	restrict_disk 50 50
+
+        while [ 1 ]
+        do
+		bench_exec ${FUNCNAME[0]} "stress-ng" "-c $total_cores"
+
+		percent_h1=$((percent_h1 - percent_step))
+                percent_h2=$((100 - percent_h1))
+
+		[ $percent_h1 -le 0 ] && break
+
+		restrict_cpu $percent_h1 $percent_h2
+        done
+
+	log_overall_statistics ${FUNCNAME[0]}
+}
+
+function son1
+{
+	load_default_values
+
+        percent_h1=$default_base_host_mem
+        percent_h2=$default_stress_host_mem
+
+	restrict_cpu_cpuset
+        restrict_cpu 50 50
+        restrict_disk 50 50
+	restrict_mem $default_base_host_mem $default_stress_host_mem
+
+	while [ 1 ]
+	do
+		n_process=$((((percent_h2 * total_memory_in_bytes)/100)/1024/1024/1024))
+		bench_exec ${FUNCNAME[0]} "stress-ng" "-m $n_process --vm-bytes=1g"
+
+		percent_h2=$((percent_h2 - percent_step))
+		percent_h1=$((100 - percent_h2))
+
+		[ $percent_h2 -le 0 ] && break
+
+		restrict_mem $percent_h1 $percent_h2
+	done
+
+	log_overall_statistics ${FUNCNAME[0]}
+}
+
+function son2
+{
+	load_default_values
+
+	restrict_cpu_cpuset
+        restrict_cpu 50 50
+	restrict_mem $default_base_host_mem $default_stress_host_mem
+	restrict_disk $percent_h1 $percent_h2
+
+        while [ 1 ]
+        do
+                n_process=$((total_cores/2))
+                bench_exec ${FUNCNAME[0]} "stress-ng" "-d $n_process --hdd-opts sync"
+
+                percent_h2=$((percent_h2 - percent_step))
+                percent_h1=$((100 - percent_h2))
+
+		[ $percent_h2 -le 0 ] && break
+
+                restrict_disk $percent_h1 $percent_h2
+        done
+
+	log_overall_statistics ${FUNCNAME[0]}
+}
+
+function son3
+{
+	load_default_values
+
+	restrict_mem $default_base_host_mem $default_stress_host_mem
+        restrict_cpu 50 50
+	restrict_cpu_cpuset
+	restrict_disk $percent_h1 $percent_h2
+
+        while [ 1 ] 
+        do
+                restrict_disk $percent_h1 $percent_h2
+
+                n_process=$((total_cores/2))
+                bench_exec ${FUNCNAME[0]} "stress-ng" "-d $n_process --hdd-opts direct"
+
+                percent_h2=$((percent_h2 - percent_step))
+                percent_h1=$((100 - percent_h2))
+
+		[ $percent_h2 -le 0 ] && break
+
+                restrict_disk $percent_h1 $percent_h2
+        done
+
+	log_overall_statistics ${FUNCNAME[0]}
+}
+
+function son4
+{
+	load_default_values
+	restrict_cpu_cpuset
+        restrict_cpu 50 50
+	restrict_mem $default_base_host_mem $default_stress_host_mem
+	restrict_disk $percent_h1 $percent_h2
+
+        while [ 1 ] 
+        do
+                n_process=$((total_cores/2))
+                bench_exec ${FUNCNAME[0]} "stress-ng" "-d $n_process --hdd-opts wr-seq"
+
+                percent_h2=$((percent_h2 - percent_step))
+                percent_h1=$((100 - percent_h2))
+
+		[ $percent_h2 -le 0 ] && break
+
+                restrict_disk $percent_h1 $percent_h2
+        done
+
+	log_overall_statistics ${FUNCNAME[0]}
+}
+
+function son5
+{
+	load_default_values
+	restrict_cpu_cpuset
+        restrict_cpu 50 50
+	restrict_mem $default_base_host_mem $default_stress_host_mem
+	restrict_disk $percent_h1 $percent_h2
+
+        while [ 1 ] 
+        do
+                n_process=$((total_cores/2))
+                bench_exec ${FUNCNAME[0]} "stress-ng" "-d $n_process --hdd-opts wr-rnd"
+
+                percent_h2=$((percent_h2 - percent_step))
+                percent_h1=$((100 - percent_h2))
+
+		[ $percent_h2 -le 0 ] && break
+
+                restrict_disk $percent_h1 $percent_h2
+        done
+		
+	log_overall_statistics ${FUNCNAME[0]}
+}
+
+function son6
+{
+	load_default_values
+	restrict_cpu_cpuset
+        restrict_cpu 50 50
+	restrict_mem $default_base_host_mem $default_stress_host_mem
+	restrict_disk $percent_h1 $percent_h2
+
+        while [ 1 ]
+        do
+                n_process=$((total_cores/2))
+                bench_exec ${FUNCNAME[0]} "stress-ng" "-d $n_process --hdd-opts rd-seq"
+
+                percent_h2=$((percent_h2 - percent_step))
+                percent_h1=$((100 - percent_h2))
+
+		[ $percent_h2 -le 0 ] && break
+
+                restrict_disk $percent_h1 $percent_h2
+        done
+
+	log_overall_statistics ${FUNCNAME[0]}
+}
+
+function son7
+{
+	load_default_values
+	restrict_cpu_cpuset
+        restrict_cpu 50 50
+	restrict_mem $default_base_host_mem $default_stress_host_mem
+	restrict_disk $percent_h1 $percent_h2
+
+        while [ 1 ] 
+        do
+                n_process=$((total_cores/2))
+                bench_exec ${FUNCNAME[0]} "stress-ng" "-d $n_process --hdd-opts rd-rnd"
+
+                percent_h2=$((percent_h2 - percent_step))
+                percent_h1=$((100 - percent_h2))
+
+		[ $percent_h2 -le 0 ] && break
+
+                restrict_disk $percent_h1 $percent_h2
+        done
+
+	log_overall_statistics ${FUNCNAME[0]}
+}
+
+function son8
+{
+	load_default_values
+
+	restrict_mem $default_base_host_mem $default_stress_host_mem
+	restrict_disk 50 50
+        restrict_cpu 50 50
+	restrict_cpu_cpuset
+
+        while [ 1 ]
+        do      
+		n_process=$((total_cores/2))
+		bench_exec ${FUNCNAME[0]} "stress-ng" "--cache $n_process"
+
+                percent_h2=$((percent_h2 - percent_step))
+                percent_h1=$((100 - percent_h2))
+
+		[ $percent_h2 -le 0 ] && break
+
+                restrict_disk $percent_h1 $percent_h2
+        done
+
+	log_overall_statistics ${FUNCNAME[0]}
+}
+
