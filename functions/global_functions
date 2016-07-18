@@ -72,6 +72,20 @@ function load_variables_from_file
 	output_log=logs/output_$(date +%Y_%m_%d_%H_%M_%S).log
 	workload_log=logs/output_workload_$(date +%Y_%m_%d_%H_%M_%S).log
 
+	#Vsphere Variables
+	vsphere_ip=$(get_variable $1 "vsphere_ip")
+	TOTAL_CORES=$(rsh root@$vsphere_ip "esxcli hardware cpu global get | grep 'CPU Threads' | sed 's/[^0-9]*//g'")
+	#Get vm config file path
+	rsh root@$vsphere_ip vim-cmd vmsvc/getallvms | tail -n +2 > /tmp/vm_id_alloc
+	VM_ID_1=$((head -1 /tmp/vm_id_alloc | tail -1) | head -c 1)
+	VM_ID_2=$((head -2 /tmp/vm_id_alloc | tail -1) | head -c 1)	
+	VM_NAME_1=$(cat /tmp/vm_id_alloc | tr -s " " | awk '{print $2}' | head -1)
+	VM_NAME_2=$(cat /tmp/vm_id_alloc | tr -s " " | awk '{print $2}' | head -2 | tail -1)
+	vm1_config_file=$(rsh root@$vsphere_ip find /vmfs -iname $VM_NAME_1.vmx)
+	vm2_config_file=$(rsh root@$vsphere_ip find /vmfs -iname $VM_NAME_2.vmx)
+	HALF_TOTAL_CORES=$(($total_cores/2))
+
+	echo "General Variables:"
 	echo $base_host_ip	
 	echo $base_host_domain_name
 	echo $base_host_workload
@@ -84,11 +98,20 @@ function load_variables_from_file
 	echo $log_cmd
 	echo $total_memory_in_bytes
 	echo $total_cores
-
 	echo $default_base_host_mem
 	echo $default_stress_host_mem
-	echo $maximum_disk_throughput
-
+	sleep 2
+	echo "Vshpere Variables:"
+	echo $maximum_disk_throughput		
+	echo $TOTAL_CORES
+	echo $vsphere_ip
+	echo $VM_ID_1
+	echo $VM_ID_2
+	echo $VM_NAME_1
+	echo $VM_NAME_2
+	echo $vm1_config_file
+	echo $vm2_config_file
+	sleep 1
 	echo -e "Config file successfully loaded."
 }
 
@@ -131,6 +154,24 @@ function check_ssh_connection
 		[ $status2 != "ok" ] && echo "Please, check the SSH connection to stress_host_ip, maybe wrong username." && exit 1
 	fi
 	
+	echo "SSH Connection checked."
+}
+
+function check_ssh_connection_vsphere
+{
+	if [ ! -f $HOME/.ssh/id_rsa ]; then
+		echo "Creating a pair of ssh keys . . ."
+		ssh-keygen -t rsa
+	fi
+	
+	status=$(ssh -o BatchMode=yes -o ConnectTimeout=5 root\@$vsphere_ip echo ok 2>&1)
+	if [[ $status != ok ]] ; then
+		echo "Adding public key to Vsphere. . ."
+		cat /root/.ssh/id.dsa.pub | ssh root@$vsphere_ip ‘cat >> /etc/ssh/keys-root/authorized_keys’
+		status2=$(ssh -o BatchMode=yes -o ConnectTimeout=5 root\@$vsphere_ip echo ok 2>&1)
+		[ $status2 != "ok" ] && echo "Please, check the SSH connection to base_host_ip, maybe wrong username." && exit 1
+	fi
+
 	echo "SSH Connection checked."
 }
 

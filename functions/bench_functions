@@ -83,11 +83,15 @@ function bench_alone_exec
 function son0
 {
 	load_default_values
-
+		
 	restrict_cpu $percent_h1 $percent_h2
 	restrict_mem $default_base_host_mem $default_stress_host_mem
 	restrict_disk 50 50
-
+	echo $HALF_TOTAL_CORES | ssh $base_host_ip "cat > /tmp/alloc_cpu"
+	echo $HALF_TOTAL_CORES | ssh $stress_host_ip "cat > /tmp/alloc_cpu"
+	echo $vm1_mem_alloc | ssh $base_host_ip "cat > /tmp/alloc_mem" 
+	echo $vm2_mem_alloc | ssh $stress_host_ip "cat > /tmp/alloc_mem"
+	
         while [ 1 ]
         do
 		bench_exec ${FUNCNAME[0]} "stress-ng" "-c $total_cores"
@@ -114,6 +118,10 @@ function son1
         restrict_cpu 50 50
         restrict_disk 50 50
 	restrict_mem $default_base_host_mem $default_stress_host_mem
+	echo $HALF_TOTAL_CORES | ssh $base_host_ip "cat > /tmp/alloc_cpu"
+	echo $HALF_TOTAL_CORES | ssh $stress_host_ip "cat > /tmp/alloc_cpu"
+	echo $vm1_mem_alloc | ssh $base_host_ip "cat > /tmp/alloc_mem" 
+	echo $vm2_mem_alloc | ssh $stress_host_ip "cat > /tmp/alloc_mem"
 
 	while [ 1 ]
 	do
@@ -139,6 +147,10 @@ function son2
         restrict_cpu 50 50
 	restrict_mem $default_base_host_mem $default_stress_host_mem
 	restrict_disk $percent_h1 $percent_h2
+	echo $HALF_TOTAL_CORES | ssh $base_host_ip "cat > /tmp/alloc_cpu"
+	echo $HALF_TOTAL_CORES | ssh $stress_host_ip "cat > /tmp/alloc_cpu"
+	echo $vm1_mem_alloc | ssh $base_host_ip "cat > /tmp/alloc_mem" 
+	echo $vm2_mem_alloc | ssh $stress_host_ip "cat > /tmp/alloc_mem"
 
         while [ 1 ]
         do
@@ -169,6 +181,11 @@ function son3
         do
                 restrict_disk $percent_h1 $percent_h2
 
+		echo $HALF_TOTAL_CORES | ssh $base_host_ip "cat > /tmp/alloc_cpu"
+		echo $HALF_TOTAL_CORES | ssh $stress_host_ip "cat > /tmp/alloc_cpu"
+		echo $vm1_mem_alloc | ssh $base_host_ip "cat > /tmp/alloc_mem" 
+		echo $vm2_mem_alloc | ssh $stress_host_ip "cat > /tmp/alloc_mem"
+
                 n_process=$((total_cores/2))
                 bench_exec ${FUNCNAME[0]} "stress-ng" "-d $n_process --hdd-opts direct"
 
@@ -190,6 +207,10 @@ function son4
         restrict_cpu 50 50
 	restrict_mem $default_base_host_mem $default_stress_host_mem
 	restrict_disk $percent_h1 $percent_h2
+	echo $HALF_TOTAL_CORES | ssh $base_host_ip "cat > /tmp/alloc_cpu"
+	echo $HALF_TOTAL_CORES | ssh $stress_host_ip "cat > /tmp/alloc_cpu"
+	echo $vm1_mem_alloc | ssh $base_host_ip "cat > /tmp/alloc_mem" 
+	echo $vm2_mem_alloc | ssh $stress_host_ip "cat > /tmp/alloc_mem"
 
         while [ 1 ] 
         do
@@ -201,7 +222,7 @@ function son4
 
 		[ $percent_h2 -le 0 ] && break
 
-                restrict_disk $percent_h1 $percent_h2
+                restrict_disk $percent_h1 $percent_h2		
         done
 
 	log_overall_statistics ${FUNCNAME[0]}
@@ -214,6 +235,10 @@ function son5
         restrict_cpu 50 50
 	restrict_mem $default_base_host_mem $default_stress_host_mem
 	restrict_disk $percent_h1 $percent_h2
+	echo $HALF_TOTAL_CORES | ssh $base_host_ip "cat > /tmp/alloc_cpu"
+	echo $HALF_TOTAL_CORES | ssh $stress_host_ip "cat > /tmp/alloc_cpu"
+	echo $vm1_mem_alloc | ssh $base_host_ip "cat > /tmp/alloc_mem" 
+	echo $vm2_mem_alloc | ssh $stress_host_ip "cat > /tmp/alloc_mem"
 
         while [ 1 ] 
         do
@@ -225,7 +250,7 @@ function son5
 
 		[ $percent_h2 -le 0 ] && break
 
-                restrict_disk $percent_h1 $percent_h2
+                restrict_disk $percent_h1 $percent_h2		
         done
 		
 	log_overall_statistics ${FUNCNAME[0]}
@@ -238,6 +263,10 @@ function son6
         restrict_cpu 50 50
 	restrict_mem $default_base_host_mem $default_stress_host_mem
 	restrict_disk $percent_h1 $percent_h2
+	echo $HALF_TOTAL_CORES | ssh $base_host_ip "cat > /tmp/alloc_cpu"
+	echo $HALF_TOTAL_CORES | ssh $stress_host_ip "cat > /tmp/alloc_cpu"
+	echo $vm1_mem_alloc | ssh $base_host_ip "cat > /tmp/alloc_mem" 
+	echo $vm2_mem_alloc | ssh $stress_host_ip "cat > /tmp/alloc_mem"
 
         while [ 1 ]
         do
@@ -249,7 +278,7 @@ function son6
 
 		[ $percent_h2 -le 0 ] && break
 
-                restrict_disk $percent_h1 $percent_h2
+                restrict_disk $percent_h1 $percent_h2		
         done
 
 	log_overall_statistics ${FUNCNAME[0]}
@@ -262,6 +291,10 @@ function son7
         restrict_cpu 50 50
 	restrict_mem $default_base_host_mem $default_stress_host_mem
 	restrict_disk $percent_h1 $percent_h2
+	echo $HALF_TOTAL_CORES | ssh $base_host_ip "cat > /tmp/alloc_cpu"
+	echo $HALF_TOTAL_CORES | ssh $stress_host_ip "cat > /tmp/alloc_cpu"
+	echo $vm1_mem_alloc | ssh $base_host_ip "cat > /tmp/alloc_mem" 
+	echo $vm2_mem_alloc | ssh $stress_host_ip "cat > /tmp/alloc_mem"
 
         while [ 1 ] 
         do
@@ -273,7 +306,7 @@ function son7
 
 		[ $percent_h2 -le 0 ] && break
 
-                restrict_disk $percent_h1 $percent_h2
+                restrict_disk $percent_h1 $percent_h2		
         done
 
 	log_overall_statistics ${FUNCNAME[0]}
@@ -287,6 +320,10 @@ function son8
 	restrict_disk 50 50
         restrict_cpu 50 50
 	restrict_cpu_cpuset
+	echo $HALF_TOTAL_CORES | ssh $base_host_ip "cat > /tmp/alloc_cpu"
+	echo $HALF_TOTAL_CORES | ssh $stress_host_ip "cat > /tmp/alloc_cpu"
+	echo $vm1_mem_alloc | ssh $base_host_ip "cat > /tmp/alloc_mem" 
+	echo $vm2_mem_alloc | ssh $stress_host_ip "cat > /tmp/alloc_mem"
 
         while [ 1 ]
         do      
@@ -298,9 +335,8 @@ function son8
 
 		[ $percent_h2 -le 0 ] && break
 
-                restrict_disk $percent_h1 $percent_h2
+                restrict_disk $percent_h1 $percent_h2		
         done
 
 	log_overall_statistics ${FUNCNAME[0]}
 }
-
